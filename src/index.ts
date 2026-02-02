@@ -19,6 +19,8 @@ const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 20;
 const TRUNCATE_THRESHOLD = 85;
 const TRUNCATE_TO = 80;
+const FAVICON_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAtGVYSWZJSSoACAAAAAYAEgEDAAEAAAABAAAAGgEFAAEAAABWAAAAGwEFAAEAAABeAAAAKAEDAAEAAAACAAAAEwIDAAEAAAABAAAAaYcEAAEAAABmAAAAAAAAAEgAAAABAAAASAAAAAEAAAAGAACQBwAEAAAAMDIxMAGRBwAEAAAAAQIDAACgBwAEAAAAMDEwMAGgAwABAAAA//8AAAKgBAABAAAAgAAAAAOgBAABAAAAgAAAAAAAAABKviP0AAACuElEQVR4nO3dMW4aURRA0RnCSOzAhVcQidaNF+AFuLDkcgq3lBFVhJIukheQ6lOzCS/ArZXaiMZQuLY0CZMdvIn1DZnh3tM+gW24+tI8wBSFJEmSJEmSJEmSJEmSJEk6BWVxYqqqaqN50zQn9zfnGGXdWoNnAHAGAGcAcAYAZwBwBgB3itfE4R4g13a7DednZ2eDekw9AeAMAM4A4AwAzgDgDADOAODGBcxkMgnnb29v4Xw+nxenxBMAzgDgDADOAOAMAM4A4AwAbnB7gNFoFL7ev9/vw9vf3t6G85RSkaOu6/D3Syn16v0CngBwBgBnAHAGAGcAcAYAZwBwg9sDdF3nLxaLcL5er7N+furYE9R1XQyJJwCcAcAZAJwBwBkAnAHAGQBcr16bPtLn/8tD3n/dsQe4vLwM53d3d0d9TjwB4AwAzgDgDADOAOAMAM4A4Hq3B6iq6nc0n81mn6L5/f191s8vy/ghadu8NcTFxUU4f3x8dA+g4zEAOAOAMwA4A4AzADgDgOvd5wKapgmv819fX8Pbn5+ff43mV1dX33Le918eeE9wbJ4AcAYAZwBwBgBnAHAGAGcAcP9jD3DQC+XdbvczmqeUvufcf5t5oT+dTnPfD/Chj58nAJwBwBkAnAHAGQCcAcAZANx4aNf5T09P4bxpml3RY2XH+wmOzRMAzgDgDADOAOAMAM4A4AwA7hB7gDLze/WyXk/fbDZfovnLy8uPIk/ZMW+H9LkBTwA4A4AzADgDgDMAOAOAMwC4fr04/Q+69gjL5TLcbbRt+yfzV2gP+f8Dur5vIKX0oc+ZJwCcAcAZAJwBwBkAnAHAGQDc4PYAQ99TPDw8hLd/fn4O5zc3N+F8tVq96zn1BIAzADgDgDMAOAOAMwA4A4BzD9Az19fXv6L5eDz+HM3dA+hdDADOAOD+AmdVf9wMHp+YAAAAAElFTkSuQmCC";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -27,6 +29,10 @@ export default {
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders() });
+    }
+
+    if (path === "/favicon.ico" || path === "/favicon.png") {
+      return pngResponse(base64ToBytes(FAVICON_PNG_BASE64));
     }
 
     if (path === "/" || path === "/reading/page" || path === "/reading/html") {
@@ -155,6 +161,8 @@ function renderHtml(items: ReadingItem[], env: Env): string {
     "  <meta charset=\"utf-8\" />",
     "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />",
     `  <title>${escapeHtml(title)}</title>`,
+    "  <link rel=\"icon\" href=\"/favicon.png\" type=\"image/png\" />",
+    "  <link rel=\"apple-touch-icon\" href=\"/favicon.png\" />",
     "  <style>",
     "    :root { color-scheme: dark; }",
     "    body { margin: 0; font-family: \"IBM Plex Sans\", \"Space Grotesk\", system-ui, -apple-system, sans-serif; background: #0b0b0b; color: #f5f5f5; }",
@@ -349,6 +357,26 @@ function htmlResponse(body: string): Response {
       "Cache-Control": "s-maxage=60, max-age=60",
     },
   });
+}
+
+function pngResponse(body: Uint8Array): Response {
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "image/png",
+      "Cache-Control": "s-maxage=86400, max-age=86400",
+    },
+  });
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const length = binary.length;
+  const bytes = new Uint8Array(length);
+  for (let i = 0; i < length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 function getHost(url: string): string {
