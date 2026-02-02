@@ -1,1 +1,6 @@
+# Dependencies
 node_modules/
+
+# AI
+.codex/
+.claude/

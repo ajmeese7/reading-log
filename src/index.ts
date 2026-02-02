@@ -10,7 +10,6 @@ type ReadingItem = {
   id: string;
   title: string;
   url: string;
-  source?: string;
   added_at: string;
 };
 
@@ -56,8 +55,6 @@ export default {
 
       const title = normalizeText(payload.title);
       const itemUrl = normalizeUrl(payload.url);
-      const source = normalizeText(payload.source);
-
       if (!title || !itemUrl) {
         return jsonResponse({ error: "Missing title or url" }, 400);
       }
@@ -69,7 +66,6 @@ export default {
         id,
         title,
         url: itemUrl,
-        source: source || undefined,
         added_at: addedAt,
       };
 
@@ -137,14 +133,13 @@ function renderRss(items: ReadingItem[], env: Env): string {
       const entryTitle = escapeXml(item.title);
       const entryUrl = escapeXml(item.url);
       const entryDate = escapeXml(item.added_at);
-      const source = item.source ? ` — ${escapeXml(item.source)}` : "";
       return [
         "    <item>",
         `      <title>${entryTitle}</title>`,
         `      <link>${entryUrl}</link>`,
         `      <guid>${entryUrl}</guid>`,
         `      <pubDate>${new Date(item.added_at).toUTCString()}</pubDate>`,
-        `      <description>${entryTitle}${source}</description>`,
+        `      <description>${entryTitle}</description>`,
         "    </item>",
       ].join("\n");
     })

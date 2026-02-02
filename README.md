@@ -49,7 +49,6 @@ JSON body:
 {
   "title": "Article title",
   "url": "https://example.com/article",
-  "source": "Optional publication",
   "added_at": "Optional ISO timestamp"
 }
 ```
@@ -88,7 +87,7 @@ JSON body:
 curl -X POST https://YOUR_WORKER_URL/reading/add \
   -H "Authorization: Bearer $READING_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"title":"Example title","url":"https://example.com","source":"Example"}'
+  -d '{"title":"Example title","url":"https://example.com"}'
 ```
 
 ## README Integration (optional)
