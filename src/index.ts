@@ -29,7 +29,12 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders() });
     }
 
-    if (path === "/" || path === "/reading") {
+    if (path === "/" || path === "/reading/page" || path === "/reading/html") {
+      const items = await getItems(env, parseLimit(url));
+      return htmlResponse(renderHtml(items, env));
+    }
+
+    if (path === "/reading") {
       return jsonResponse(await getItems(env, parseLimit(url)), 200);
     }
 
@@ -123,9 +128,68 @@ function renderMarkdown(items: ReadingItem[]): string {
     .join("\n");
 }
 
+function renderHtml(items: ReadingItem[], env: Env): string {
+  const title = env.READING_SITE_TITLE || "Reading Log";
+  const siteUrl = env.READING_SITE_URL || env.READING_MORE_URL || "";
+  const rssUrl = "/reading/rss";
+  const list = items.length
+    ? items
+        .map((item) => {
+          const safeTitle = escapeHtml(item.title);
+          const safeUrl = escapeHtml(item.url);
+          const host = escapeHtml(getHost(item.url));
+          const date = escapeHtml(formatDate(item.added_at));
+          return `<li><a href="${safeUrl}" rel="noopener" target="_blank">${safeTitle}</a><span class="meta">${host} · ${date}</span></li>`;
+        })
+        .join("")
+    : '<li class="empty">No items yet.</li>';
+
+  const titleLine = siteUrl
+    ? `<a class="title" href="${escapeHtml(siteUrl)}">${escapeHtml(title)}</a>`
+    : `<span class="title">${escapeHtml(title)}</span>`;
+
+  return [
+    "<!doctype html>",
+    "<html lang=\"en\">",
+    "<head>",
+    "  <meta charset=\"utf-8\" />",
+    "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />",
+    `  <title>${escapeHtml(title)}</title>`,
+    "  <style>",
+    "    :root { color-scheme: dark; }",
+    "    body { margin: 0; font-family: \"IBM Plex Sans\", \"Space Grotesk\", system-ui, -apple-system, sans-serif; background: #0b0b0b; color: #f5f5f5; }",
+    "    main { max-width: 720px; margin: 48px auto; padding: 0 20px; }",
+    "    header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 24px; }",
+    "    .title { font-size: 24px; font-weight: 600; letter-spacing: 0.02em; color: #f5f5f5; text-decoration: none; }",
+    "    .links a { color: #9b9b9b; text-decoration: none; font-size: 14px; }",
+    "    .links a:hover { color: #f5f5f5; }",
+    "    ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }",
+    "    li { display: grid; gap: 6px; padding: 12px 0; border-bottom: 1px solid #1c1c1c; }",
+    "    li:last-child { border-bottom: none; }",
+    "    li a { color: #f5f5f5; text-decoration: none; font-size: 16px; font-weight: 500; line-height: 1.4; }",
+    "    li a:hover { text-decoration: underline; }",
+    "    .meta { color: #8a8a8a; font-size: 12px; letter-spacing: 0.02em; }",
+    "    .empty { color: #8a8a8a; font-size: 14px; }",
+    "  </style>",
+    "</head>",
+    "<body>",
+    "  <main>",
+    "    <header>",
+    `      ${titleLine}`,
+    "      <div class=\"links\">",
+    `        <a href=\"${rssUrl}\">RSS</a>`,
+    "      </div>",
+    "    </header>",
+    `    <ul>${list}</ul>`,
+    "  </main>",
+    "</body>",
+    "</html>",
+  ].join("\n");
+}
+
 function renderRss(items: ReadingItem[], env: Env): string {
   const title = env.READING_SITE_TITLE || "Reading Log";
-  const siteUrl = env.READING_SITE_URL || env.READING_MORE_URL || "https://read.aaronmeese.com";
+  const siteUrl = env.READING_SITE_URL || env.READING_MORE_URL || "https://reading.aaronmeese.com";
   const updated = items[0]?.added_at || new Date().toISOString();
 
   const entries = items
@@ -223,6 +287,10 @@ function escapeMarkdown(text: string): string {
   return text.replace(/[\[\]\\]/g, "\\$&");
 }
 
+function escapeHtml(text: string): string {
+  return escapeXml(text);
+}
+
 function escapeXml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -271,4 +339,30 @@ function corsHeaders(): Record<string, string> {
     "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Reading-Token",
   };
+}
+
+function htmlResponse(body: string): Response {
+  return new Response(body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "s-maxage=60, max-age=60",
+    },
+  });
+}
+
+function getHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function formatDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+  return parsed.toISOString().slice(0, 10);
 }

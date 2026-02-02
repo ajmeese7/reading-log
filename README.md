@@ -20,6 +20,12 @@ wrangler login
 
 ## Endpoints
 
+### GET `/`
+Minimal HTML reading log page (use for your subdomain).
+
+Optional query params:
+- `limit` (default `5`, max `20`)
+
 ### GET `/reading`
 Returns JSON list of items (newest first).
 
@@ -112,4 +118,23 @@ If your GitHub README contains:
 You can populate it with the Markdown endpoint:
 ```
 https://YOUR_WORKER_URL/reading/markdown?limit=5
+```
+
+## Subdomain
+
+Point your `reading.<domain>` to the Worker and it will serve the HTML page at `/`.
+
+**Recommended (Worker Route):**
+1. **DNS record**: create a `CNAME` record for `reading` that points to your root domain (`@`) or any existing hostname in your zone. Make sure it’s **proxied** (orange cloud).
+2. **Worker route**: in Cloudflare → Workers & Pages → your worker → **Triggers**, add a route:
+   ```
+   reading.yourdomain.com/*
+   ```
+
+**Alternative (Custom Domain):**
+If your Cloudflare plan supports Worker custom domains, add `reading.yourdomain.com` in the worker’s **Settings → Domains** and Cloudflare will create the DNS record automatically.
+
+Your RSS remains available at:
+```
+https://reading.yourdomain.com/reading/rss
 ```

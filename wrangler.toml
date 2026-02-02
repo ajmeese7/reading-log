@@ -5,3 +5,7 @@ compatibility_date = "2024-12-02"
 kv_namespaces = [
   { binding = "READING_KV", id = "3ca95fa9cc2449aab4ddf7c7b9e007d6", preview_id = "0b655bb552744335907ca93ac38b6327" }
 ]
+
+routes = [
+  { pattern = "reading.aaronmeese.com", custom_domain = true }
+]
