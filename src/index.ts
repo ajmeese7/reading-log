@@ -87,6 +87,32 @@ export default {
       return jsonResponse({ ok: true, item }, 201);
     }
 
+    if (path === "/reading/remove" && request.method === "DELETE") {
+      if (!isAuthorized(request, env)) {
+        return jsonResponse({ error: "Unauthorized" }, 401);
+      }
+
+      const payload = await readJson(request);
+      if (!payload) {
+        return jsonResponse({ error: "Invalid JSON body" }, 400);
+      }
+
+      const targetUrl = normalizeUrl(payload.url);
+      if (!targetUrl) {
+        return jsonResponse({ error: "Missing url" }, 400);
+      }
+
+      const items = await getItems(env, MAX_ITEMS);
+      const filtered = items.filter((item) => item.url !== targetUrl);
+
+      if (filtered.length === items.length) {
+        return jsonResponse({ error: "Item not found" }, 404);
+      }
+
+      await putItems(env, filtered);
+      return jsonResponse({ ok: true, removed: targetUrl }, 200);
+    }
+
     return jsonResponse({ error: "Not found" }, 404);
   },
 };
@@ -344,7 +370,7 @@ function rssResponse(body: string): Response {
 function corsHeaders(): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Reading-Token",
   };
 }

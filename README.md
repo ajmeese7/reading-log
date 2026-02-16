@@ -59,6 +59,21 @@ JSON body:
 }
 ```
 
+### DELETE `/reading/remove`
+Removes an item by URL. Requires auth.
+
+Headers:
+- `Authorization: Bearer $READING_TOKEN` or `X-Reading-Token: $READING_TOKEN`
+
+JSON body:
+```json
+{
+  "url": "https://example.com/article"
+}
+```
+
+Returns `404` if no item matches the given URL.
+
 ## Truncation Rules (Markdown list)
 
 - If title length is **85+**, truncate to **80** characters and append `…`.
@@ -104,6 +119,15 @@ curl -X POST https://YOUR_WORKER_URL/reading/add \
   -H "Authorization: Bearer $READING_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"title":"Example title","url":"https://example.com"}'
+```
+
+## Example: remove an item
+
+```bash
+curl -X DELETE https://YOUR_WORKER_URL/reading/remove \
+  -H "Authorization: Bearer $READING_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/article"}'
 ```
 
 ## README Integration (optional)
