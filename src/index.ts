@@ -15,8 +15,10 @@ type ReadingItem = {
 
 const KV_KEY = "reading-items";
 const MAX_ITEMS = 100;
-const DEFAULT_LIMIT = 5;
-const MAX_LIMIT = 20;
+// The README embed shows a short teaser; the site, feed, and API serve the full history.
+const README_LIMIT = 5;
+const HISTORY_LIMIT = MAX_ITEMS;
+const MAX_LIMIT = MAX_ITEMS;
 const TRUNCATE_THRESHOLD = 85;
 const TRUNCATE_TO = 80;
 const FAVICON_PNG_BASE64 =
@@ -36,21 +38,21 @@ export default {
     }
 
     if (path === "/" || path === "/reading/page" || path === "/reading/html") {
-      const items = await getItems(env, parseLimit(url));
+      const items = await getItems(env, parseLimit(url, HISTORY_LIMIT));
       return htmlResponse(renderHtml(items, env));
     }
 
     if (path === "/reading") {
-      return jsonResponse(await getItems(env, parseLimit(url)), 200);
+      return jsonResponse(await getItems(env, parseLimit(url, HISTORY_LIMIT)), 200);
     }
 
     if (path === "/reading/markdown") {
-      const items = await getItems(env, parseLimit(url));
+      const items = await getItems(env, parseLimit(url, README_LIMIT));
       return markdownResponse(renderMarkdown(items));
     }
 
     if (path === "/reading/rss") {
-      const items = await getItems(env, parseLimit(url));
+      const items = await getItems(env, parseLimit(url, HISTORY_LIMIT));
       return rssResponse(renderRss(items, env));
     }
 
@@ -80,7 +82,7 @@ export default {
         added_at: addedAt,
       };
 
-      const items = await getItems(env);
+      const items = await readAllItems(env);
       const next = [item, ...items.filter((existing) => existing.url !== item.url)];
       await putItems(env, next.slice(0, MAX_ITEMS));
 
@@ -102,7 +104,7 @@ export default {
         return jsonResponse({ error: "Missing url" }, 400);
       }
 
-      const items = await getItems(env, MAX_ITEMS);
+      const items = await readAllItems(env);
       const filtered = items.filter((item) => item.url !== targetUrl);
 
       if (filtered.length === items.length) {
@@ -117,16 +119,16 @@ export default {
   },
 };
 
-function parseLimit(url: URL): number {
+function parseLimit(url: URL, fallback: number): number {
   const raw = url.searchParams.get("limit");
-  const parsed = raw ? Number(raw) : DEFAULT_LIMIT;
+  const parsed = raw ? Number(raw) : fallback;
   if (!Number.isFinite(parsed)) {
-    return DEFAULT_LIMIT;
+    return fallback;
   }
   return Math.max(1, Math.min(MAX_LIMIT, Math.floor(parsed)));
 }
 
-async function getItems(env: Env, limit: number = DEFAULT_LIMIT): Promise<ReadingItem[]> {
+async function readAllItems(env: Env): Promise<ReadingItem[]> {
   const stored = await env.READING_KV.get(KV_KEY);
   if (!stored) {
     return [];
@@ -136,11 +138,15 @@ async function getItems(env: Env, limit: number = DEFAULT_LIMIT): Promise<Readin
     const parsed = JSON.parse(stored) as ReadingItem[];
     return parsed
       .filter((item) => item && item.url && item.title)
-      .sort((a, b) => b.added_at.localeCompare(a.added_at))
-      .slice(0, limit);
+      .sort((a, b) => b.added_at.localeCompare(a.added_at));
   } catch {
     return [];
   }
+}
+
+async function getItems(env: Env, limit: number): Promise<ReadingItem[]> {
+  const items = await readAllItems(env);
+  return items.slice(0, limit);
 }
 
 async function putItems(env: Env, items: ReadingItem[]): Promise<void> {
