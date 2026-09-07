@@ -24,25 +24,28 @@ wrangler login
 Minimal HTML reading log page (use for your subdomain).
 
 Optional query params:
-- `limit` (default `5`, max `20`)
+- `limit` (default `100`, max `100`)
 
 ### GET `/reading`
 Returns JSON list of items (newest first).
 
 Query params:
-- `limit` (default `5`, max `20`)
+- `limit` (default `100`, max `100`)
 
 ### GET `/reading/markdown`
 Returns a Markdown list for README embedding.
 
+This is the one endpoint that stays short by default, since it feeds the
+GitHub profile README teaser.
+
 Query params:
-- `limit` (default `5`, max `20`)
+- `limit` (default `5`, max `100`)
 
 ### GET `/reading/rss`
 Returns an RSS feed.
 
 Query params:
-- `limit` (default `5`, max `20`)
+- `limit` (default `100`, max `100`)
 
 ### POST `/reading/add`
 Adds an item. Requires auth.
@@ -73,6 +76,21 @@ JSON body:
 ```
 
 Returns `404` if no item matches the given URL.
+
+## History
+
+KV stores up to `MAX_ITEMS` (100) items under a single key, newest first. Adding
+a 101st item drops the oldest. Adds and removes always read the full stored list
+before writing it back, so a write never truncates history.
+
+## Tests
+
+No dependencies required; the suite uses the Node test runner and its built-in
+TypeScript stripping (Node 22.6+):
+
+```bash
+node --experimental-strip-types --test test/worker.test.ts
+```
 
 ## Truncation Rules (Markdown list)
 
