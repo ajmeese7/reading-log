@@ -8,3 +8,4 @@ node_modules/
 # AI
 .codex/
 .claude/
+COMMIT_MSG.txt
