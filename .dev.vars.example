@@ -1,0 +1,4 @@
+READING_TOKEN=replace-with-a-random-api-token
+SETUP_TOKEN=replace-with-a-different-random-setup-token
+# For localhost only; production values are set in wrangler.toml.
+AUTH_ORIGIN=http://localhost:8787

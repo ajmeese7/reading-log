@@ -5,7 +5,7 @@ Cloudflare Worker that stores a curated reading list in KV and exposes JSON, Mar
 ## Install / Prereqs
 
 - Cloudflare account
-- Node.js 18+
+- Node.js 22.6+
 - Wrangler CLI
 
 Install Wrangler:
@@ -48,7 +48,8 @@ Query params:
 - `limit` (default `100`, max `100`)
 
 ### POST `/reading/add`
-Adds an item. Requires auth.
+Adds an item. Requires a write token or a passkey session. Browser cookie
+requests must include the configured same-origin `Origin` header.
 
 Headers:
 - `Authorization: Bearer $READING_TOKEN` or `X-Reading-Token: $READING_TOKEN`
@@ -56,11 +57,14 @@ Headers:
 JSON body:
 ```json
 {
-  "title": "Article title",
+  "title": "Optional article title (fetched when omitted)",
   "url": "https://example.com/article",
   "added_at": "Optional ISO timestamp"
 }
 ```
+
+Returns `422` if no title was supplied and automatic lookup fails. The optional
+title accepts up to 500 characters; URLs accept up to 4096 characters.
 
 ### DELETE `/reading/remove`
 Removes an item by URL. Requires auth.
@@ -85,12 +89,17 @@ before writing it back, so a write never truncates history.
 
 ## Tests
 
-No dependencies required; the suite uses the Node test runner and its built-in
-TypeScript stripping (Node 22.6+):
+The suite uses Node's test runner, SQLite for auth SQL, and Miniflare for real
+Workers HTML parsing with deterministic HTTP fixtures:
 
 ```bash
-node --experimental-strip-types --test test/worker.test.ts
+npm test
 ```
+
+`npm run check` typechecks the Worker and browser client. `npx wrangler deploy
+--dry-run` checks the production bundle without deploying. Tests include actual
+cryptographic registration and authentication, replay rejection, expired
+sessions, origin checks, manual title fallback, and existing history behavior.
 
 ## Truncation Rules (Markdown list)
 
@@ -129,6 +138,8 @@ node --experimental-strip-types --test test/worker.test.ts
    ```bash
    wrangler deploy
    ```
+
+For browser access, see the [passkey setup guide](docs/passkeys.md).
 
 ## Example: add an item
 

@@ -4,6 +4,13 @@ node_modules/
 
 # Environment variables
 .env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+public/add.js
+dist/
 
 # AI
 .codex/
