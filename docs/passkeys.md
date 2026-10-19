@@ -78,8 +78,12 @@ npm run dev
 Open `http://localhost:8787`, matching the local `AUTH_ORIGIN` in `.dev.vars`.
 Wrangler builds and serves the bundled browser script automatically. Local
 passkeys are separate from production passkeys. Do not reuse production tokens
-for local tests. `.env*`, `.dev.vars*`, build output, and local Wrangler state
-are ignored, apart from the example files.
+for local tests. `.dev.vars*`, build output, and local Wrangler state are
+ignored, apart from `.dev.vars.example`.
+
+Production uses the secrets stored with `wrangler secret put`.
+Neither `.dev.vars` nor `.env` is required for production deployment.
+Use `.dev.vars` for local development. Do not create a separate `.env` file.
 
 ## Recovery
 

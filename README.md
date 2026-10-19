@@ -114,12 +114,7 @@ sessions, origin checks, manual title fallback, and existing history behavior.
    wrangler kv namespace create READING_KV --preview
    ```
 2. Add the KV IDs to `wrangler.toml`.
-3. Optionally store your token locally in `.env` (do **not** commit it):
-   ```bash
-   cp .env.example .env
-   # edit .env and set READING_TOKEN
-   ```
-4. Set the write token in Cloudflare:
+3. Set the write token in Cloudflare:
    ```bash
    wrangler secret put READING_TOKEN
    ```
@@ -128,13 +123,13 @@ sessions, origin checks, manual title fallback, and existing history behavior.
 
    You will be prompted to create a Cloudflare Worker if one does not exist yet. Select "yes" to create one.
 
-5. Optional metadata (set in `wrangler.toml` under `[vars]` or via secrets):
+4. Optional metadata (set in `wrangler.toml` under `[vars]` or via secrets):
    ```bash
    wrangler secret put READING_SITE_TITLE
    wrangler secret put READING_SITE_URL
    wrangler secret put READING_MORE_URL
    ```
-6. Deploy:
+5. Deploy:
    ```bash
    wrangler deploy
    ```
