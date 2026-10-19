@@ -1,6 +1,12 @@
-export interface Env {
-  READING_KV: KVNamespace;
-  READING_TOKEN: string;
+import { authRoute, equalSecret, sameOrigin, sessionId } from "./auth.ts";
+import { fetchTitle } from "./title.ts";
+import { readJson } from "./body.ts";
+
+export interface Env extends Omit<Cloudflare.Env, "AUTH_ORIGIN" | "AUTH_LIMITER"> {
+  READING_TOKEN?: string;
+  AUTH_ORIGIN: string;
+  SETUP_TOKEN?: string;
+  AUTH_LIMITER?: RateLimit;
   READING_MORE_URL?: string;
   READING_SITE_TITLE?: string;
   READING_SITE_URL?: string;
@@ -28,6 +34,17 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
+
+    if (path.startsWith("/auth/")) {
+      if (request.method === "POST" && env.AUTH_LIMITER &&
+        !(await env.AUTH_LIMITER.limit({ key: request.headers.get("CF-Connecting-IP") || "local" })).success) {
+        return jsonResponse({ error: "Too many attempts. Please try again in a minute." }, 429);
+      }
+      try { return await authRoute(request, env, path); }
+      catch { return jsonResponse({ error: "Sign-in is temporarily unavailable. Please try again." }, 503); }
+    }
+
+    if (path === "/add.js" && request.method === "GET") return env.ASSETS.fetch(request);
 
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders() });
@@ -57,7 +74,7 @@ export default {
     }
 
     if (path === "/reading/add" && request.method === "POST") {
-      if (!isAuthorized(request, env)) {
+      if (!await isAuthorized(request, env)) {
         return jsonResponse({ error: "Unauthorized" }, 401);
       }
 
@@ -66,11 +83,17 @@ export default {
         return jsonResponse({ error: "Invalid JSON body" }, 400);
       }
 
-      const title = normalizeText(payload.title);
       const itemUrl = normalizeUrl(payload.url);
-      if (!title || !itemUrl) {
-        return jsonResponse({ error: "Missing title or url" }, 400);
+      if (!itemUrl || itemUrl.length > 4096) {
+        return jsonResponse({ error: "Enter a valid HTTP or HTTPS URL (up to 4096 characters)." }, 400);
       }
+      const suppliedTitle = normalizeText(payload.title);
+      if (payload.title !== undefined && payload.title !== null && typeof payload.title !== "string") {
+        return jsonResponse({ error: "Title must be text." }, 400);
+      }
+      if (suppliedTitle && suppliedTitle.length > 500) return jsonResponse({ error: "Title must be 500 characters or less." }, 400);
+      const title = suppliedTitle || await fetchTitle(itemUrl);
+      if (!title) return jsonResponse({ error: "Could not fetch the page title. Enter a title and try again." }, 422);
 
       const addedAt = normalizeIso(payload.added_at) || new Date().toISOString();
       const id = payload.id && typeof payload.id === "string" ? payload.id : itemUrl;
@@ -90,7 +113,7 @@ export default {
     }
 
     if (path === "/reading/remove" && request.method === "DELETE") {
-      if (!isAuthorized(request, env)) {
+      if (!await isAuthorized(request, env)) {
         return jsonResponse({ error: "Unauthorized" }, 401);
       }
 
@@ -197,6 +220,7 @@ function renderHtml(items: ReadingItem[], env: Env): string {
     "  <link rel=\"apple-touch-icon\" href=\"/favicon.png\" />",
     "  <style>",
     "    :root { color-scheme: dark; }",
+    "    [hidden] { display: none !important; }",
     "    body { margin: 0; font-family: \"IBM Plex Sans\", \"Space Grotesk\", system-ui, -apple-system, sans-serif; background: #0b0b0b; color: #f5f5f5; }",
     "    main { max-width: 720px; margin: 48px auto; padding: 0 20px; }",
     "    header { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 24px; }",
@@ -210,6 +234,16 @@ function renderHtml(items: ReadingItem[], env: Env): string {
     "    li a:hover { text-decoration: underline; }",
     "    .meta { color: #8a8a8a; font-size: 12px; letter-spacing: 0.02em; }",
     "    .empty { color: #8a8a8a; font-size: 14px; }",
+    "    .links { display: flex; align-items: center; gap: 16px; }",
+    "    button { font: inherit; cursor: pointer; background: #222; color: #f5f5f5; border: 1px solid #555; border-radius: 6px; padding: 8px 12px; }",
+    "    button:disabled { opacity: .5; cursor: wait; }",
+    "    dialog { color: #f5f5f5; background: #141414; border: 1px solid #555; border-radius: 12px; width: min(440px, calc(100% - 64px)); padding: 24px; }",
+    "    dialog::backdrop { background: #000a; }",
+    "    dialog h2 { margin-top: 0; }",
+    "    dialog label { display: block; margin: 16px 0; font-size: 14px; }",
+    "    input { box-sizing: border-box; display: block; width: 100%; margin-top: 8px; padding: 10px; background: #0b0b0b; color: #fff; border: 1px solid #666; border-radius: 6px; font: inherit; }",
+    "    #add-status { line-height: 1.5; overflow-wrap: anywhere; }",
+    "    #close-add { float: right; }",
     "  </style>",
     "</head>",
     "<body>",
@@ -218,10 +252,27 @@ function renderHtml(items: ReadingItem[], env: Env): string {
     `      ${titleLine}`,
     "      <div class=\"links\">",
     `        <a href=\"${rssUrl}\">RSS</a>`,
+    '        <button id="open-add" type="button">Add</button>',
     "      </div>",
     "    </header>",
     `    <ul>${list}</ul>`,
     "  </main>",
+    '<dialog id="add-dialog" aria-labelledby="add-heading">',
+    '  <button id="close-add" type="button" aria-label="Close">Close</button>',
+    '  <h2 id="add-heading">Add an entry</h2>',
+    '  <p id="auth-help">Checking sign-in…</p>',
+    '  <label hidden>Setup token<input id="setup-token" type="password" autocomplete="off" /></label>',
+    '  <button id="unlock" data-action type="button" hidden>Sign in with passkey</button>',
+    '  <button id="register" data-action type="button" hidden>Create passkey</button>',
+    '  <button id="logout" data-action type="button" hidden>Sign out</button>',
+    '  <form id="entry-form" hidden>',
+    '    <label>URL<input name="url" type="url" required maxlength="4096" placeholder="https://example.com/article" /></label>',
+    '    <label>Title (optional)<input name="title" type="text" maxlength="500" placeholder="Fetched automatically when left blank" /></label>',
+    '    <button type="submit" data-action>Add entry</button>',
+    '  </form>',
+    '  <p id="add-status" role="status" aria-live="polite"></p>',
+    '</dialog>',
+    '<script src="/add.js" type="module"></script>',
     "</body>",
     "</html>",
   ].join("\n");
@@ -285,6 +336,7 @@ function normalizeUrl(value: unknown): string | null {
   }
   try {
     const parsed = new URL(value);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) return null;
     return parsed.toString();
   } catch {
     return null;
@@ -302,25 +354,12 @@ function normalizeIso(value: unknown): string | null {
   return parsed.toISOString();
 }
 
-async function readJson(request: Request): Promise<Record<string, unknown> | null> {
-  try {
-    return (await request.json()) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
-function isAuthorized(request: Request, env: Env): boolean {
+async function isAuthorized(request: Request, env: Env): Promise<boolean> {
   const token = env.READING_TOKEN;
-  if (!token) {
-    return false;
-  }
   const auth = request.headers.get("Authorization") || "";
-  if (auth.startsWith("Bearer ")) {
-    return auth.slice("Bearer ".length).trim() === token;
-  }
-  const alt = request.headers.get("X-Reading-Token");
-  return alt === token;
+  const provided = auth.startsWith("Bearer ") ? auth.slice(7).trim() : request.headers.get("X-Reading-Token");
+  if (token && provided && await equalSecret(provided, token)) return true;
+  return sameOrigin(request, env) && !!await sessionId(request, env);
 }
 
 function escapeMarkdown(text: string): string {
@@ -387,11 +426,14 @@ function htmlResponse(body: string): Response {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "s-maxage=60, max-age=60",
+      "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
     },
   });
 }
 
-function pngResponse(body: Uint8Array): Response {
+function pngResponse(body: Uint8Array<ArrayBuffer>): Response {
   return new Response(body, {
     status: 200,
     headers: {
@@ -401,7 +443,7 @@ function pngResponse(body: Uint8Array): Response {
   });
 }
 
-function base64ToBytes(base64: string): Uint8Array {
+function base64ToBytes(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
   const length = binary.length;
   const bytes = new Uint8Array(length);

@@ -1,6 +1,7 @@
 name = "reading-log"
 main = "src/index.ts"
-compatibility_date = "2024-12-02"
+compatibility_date = "2026-10-19"
+compatibility_flags = ["nodejs_compat"]
 
 kv_namespaces = [
   { binding = "READING_KV", id = "3ca95fa9cc2449aab4ddf7c7b9e007d6", preview_id = "0b655bb552744335907ca93ac38b6327" }
@@ -9,3 +10,29 @@ kv_namespaces = [
 routes = [
   { pattern = "reading.aaronmeese.com", custom_domain = true }
 ]
+
+[[ratelimits]]
+name = "AUTH_LIMITER"
+namespace_id = "1001"
+simple = { limit = 20, period = 60 }
+
+[build]
+command = "npm run build"
+
+[dev]
+host = "localhost:8787"
+local_protocol = "http"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[vars]
+AUTH_ORIGIN = "https://reading.aaronmeese.com"
+
+[[d1_databases]]
+binding = "AUTH_DB"
+database_name = "reading-log-auth"
+# Wrangler provisions this database on first deployment if no ID is supplied.
+migrations_dir = "migrations"
