@@ -99,7 +99,9 @@ describe("passkey authentication", () => {
     assert.match(response.headers.get("Set-Cookie")!, /HttpOnly; SameSite=Strict; Max-Age=2592000; Secure/);
     assert.deepEqual(await (await ctx.request("/auth/me", undefined, cookie)).json(), { authenticated: true, registered: true });
     assert.equal((await ctx.request("/reading/add", { url: "https://example.com/article", title: "A title" }, cookie)).status, 201);
-    assert.equal(JSON.parse(ctx.store.get("reading-items")!)[0].title, "A title");
+    assert.equal((await ctx.request("/reading/edit", { original_url: "https://example.com/article", url: "https://example.com/edited", title: "Edited title" }, cookie)).status, 200);
+    assert.equal((await ctx.request("/reading/edit", { original_url: "https://example.com/edited", url: "https://example.com/evil", title: "T" }, cookie, "https://evil.test")).status, 401);
+    assert.equal(JSON.parse(ctx.store.get("reading-items")!)[0].title, "Edited title");
     assert.ok(!ctx.db.prepare("SELECT id FROM sessions").get()!.id.includes(cookie.split("=")[1]));
   });
 

@@ -9,6 +9,9 @@ const logout = document.querySelector<HTMLButtonElement>("#logout")!;
 const setup = document.querySelector<HTMLInputElement>("#setup-token")!;
 let authenticated = false;
 let busy = false;
+let editingUrl: string | null = null;
+const heading = document.querySelector<HTMLElement>("#add-heading")!;
+const submit = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
 
 async function api<T = { ok: boolean }>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, body === undefined ? { cache: "no-store" } : {
@@ -23,6 +26,7 @@ async function refresh() {
   const state = await api<{ authenticated: boolean; registered: boolean }>("/auth/me");
   authenticated = state.authenticated;
   form.hidden = !authenticated;
+  document.querySelectorAll<HTMLButtonElement>(".edit-entry").forEach(button => button.hidden = !authenticated);
   login.hidden = authenticated || !state.registered;
   register.hidden = !authenticated && state.registered;
   register.textContent = authenticated ? "Add another passkey" : "Create passkey";
@@ -51,9 +55,27 @@ async function run(action: () => Promise<void>) {
 }
 
 document.querySelector("#open-add")!.addEventListener("click", () => {
+  editingUrl = null;
+  form.reset();
+  heading.textContent = "Add an entry";
+  submit.textContent = "Add entry";
   dialog.showModal();
   void run(refresh);
 });
+document.querySelectorAll<HTMLButtonElement>(".edit-entry").forEach(button => {
+  button.addEventListener("click", () => {
+    if (busy || !authenticated) return;
+    editingUrl = button.dataset.url!;
+    (form.elements.namedItem("url") as HTMLInputElement).value = editingUrl;
+    (form.elements.namedItem("title") as HTMLInputElement).value = button.dataset.title!;
+    heading.textContent = "Edit entry";
+    submit.textContent = "Save changes";
+    dialog.showModal();
+    void run(refresh);
+  });
+});
+// Check the session on page load so returning users see their edit controls.
+void refresh().catch(() => {});
 document.querySelector("#close-add")!.addEventListener("click", () => dialog.close());
 login.addEventListener("click", () => void run(async () => {
   if (!window.PublicKeyCredential) throw new Error("This browser does not support passkeys.");
@@ -81,7 +103,9 @@ form.addEventListener("submit", event => {
   void run(async () => {
     const values = new FormData(form);
     try {
-      await api("/reading/add", { url: values.get("url"), title: values.get("title") });
+      await api(editingUrl ? "/reading/edit" : "/reading/add", {
+        url: values.get("url"), title: values.get("title"), original_url: editingUrl,
+      });
     } catch (error) {
       await refresh();
       throw error;

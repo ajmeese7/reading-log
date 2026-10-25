@@ -73,7 +73,7 @@ export default {
       return rssResponse(renderRss(items, env));
     }
 
-    if (path === "/reading/add" && request.method === "POST") {
+    if ((path === "/reading/add" || path === "/reading/edit") && request.method === "POST") {
       if (!await isAuthorized(request, env)) {
         return jsonResponse({ error: "Unauthorized" }, 401);
       }
@@ -82,6 +82,12 @@ export default {
       if (!payload) {
         return jsonResponse({ error: "Invalid JSON body" }, 400);
       }
+
+      const editing = path === "/reading/edit";
+      const items = await readAllItems(env);
+      const originalUrl = normalizeUrl(payload.original_url);
+      const existing = editing ? items.find(item => item.url === originalUrl) : undefined;
+      if (editing && !existing) return jsonResponse({ error: "Item not found" }, 404);
 
       const itemUrl = normalizeUrl(payload.url);
       if (!itemUrl || itemUrl.length > 4096) {
@@ -95,8 +101,11 @@ export default {
       const title = suppliedTitle || await fetchTitle(itemUrl);
       if (!title) return jsonResponse({ error: "Could not fetch the page title. Enter a title and try again." }, 422);
 
-      const addedAt = normalizeIso(payload.added_at) || new Date().toISOString();
-      const id = payload.id && typeof payload.id === "string" ? payload.id : itemUrl;
+      if (editing && items.some(item => item.url === itemUrl && item !== existing)) {
+        return jsonResponse({ error: "An entry with this URL already exists." }, 409);
+      }
+      const addedAt = existing?.added_at || normalizeIso(payload.added_at) || new Date().toISOString();
+      const id = existing?.id || (payload.id && typeof payload.id === "string" ? payload.id : itemUrl);
 
       const item: ReadingItem = {
         id,
@@ -105,11 +114,11 @@ export default {
         added_at: addedAt,
       };
 
-      const items = await readAllItems(env);
-      const next = [item, ...items.filter((existing) => existing.url !== item.url)];
+      const next = editing ? items.map(entry => entry === existing ? item : entry)
+        : [item, ...items.filter((existing) => existing.url !== item.url)];
       await putItems(env, next.slice(0, MAX_ITEMS));
 
-      return jsonResponse({ ok: true, item }, 201);
+      return jsonResponse({ ok: true, item }, editing ? 200 : 201);
     }
 
     if (path === "/reading/remove" && request.method === "DELETE") {
@@ -200,7 +209,7 @@ function renderHtml(items: ReadingItem[], env: Env): string {
           const safeUrl = escapeHtml(item.url);
           const host = escapeHtml(getHost(item.url));
           const date = escapeHtml(formatDate(item.added_at));
-          return `<li><a href="${safeUrl}" rel="noopener" target="_blank">${safeTitle}</a><span class="meta">${host} · ${date}</span></li>`;
+          return `<li><a href="${safeUrl}" rel="noopener" target="_blank">${safeTitle}</a><span class="meta">${host} · ${date} <button class="edit-entry" type="button" data-url="${safeUrl}" data-title="${safeTitle}" aria-label="Edit ${safeTitle}" title="Edit article" hidden><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5"/></svg></button></span></li>`;
         })
         .join("")
     : '<li class="empty">No items yet.</li>';
@@ -232,6 +241,8 @@ function renderHtml(items: ReadingItem[], env: Env): string {
     "    li:last-child { border-bottom: none; }",
     "    li a { color: #f5f5f5; text-decoration: none; font-size: 16px; font-weight: 500; line-height: 1.4; }",
     "    li a:hover { text-decoration: underline; }",
+    "    .edit-entry { padding: 4px; margin-left: 6px; vertical-align: middle; background: transparent; border: none; color: #9b9b9b; }",
+    "    .edit-entry:hover { color: #fff; }",
     "    .meta { color: #8a8a8a; font-size: 12px; letter-spacing: 0.02em; }",
     "    .empty { color: #8a8a8a; font-size: 14px; }",
     "    .links { display: flex; align-items: center; gap: 16px; }",
@@ -243,7 +254,7 @@ function renderHtml(items: ReadingItem[], env: Env): string {
     "    dialog label { display: block; margin: 16px 0; font-size: 14px; }",
     "    input { box-sizing: border-box; display: block; width: 100%; margin-top: 8px; padding: 10px; background: #0b0b0b; color: #fff; border: 1px solid #666; border-radius: 6px; font: inherit; }",
     "    #add-status { line-height: 1.5; overflow-wrap: anywhere; }",
-    "    #close-add { float: right; }",
+    "    #close-add { float: right; padding: 4px; background: transparent; border: none; }",
     "  </style>",
     "</head>",
     "<body>",
@@ -258,7 +269,7 @@ function renderHtml(items: ReadingItem[], env: Env): string {
     `    <ul>${list}</ul>`,
     "  </main>",
     '<dialog id="add-dialog" aria-labelledby="add-heading">',
-    '  <button id="close-add" type="button" aria-label="Close">Close</button>',
+    '  <button id="close-add" type="button" aria-label="Close"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button>',
     '  <h2 id="add-heading">Add an entry</h2>',
     '  <p id="auth-help">Checking sign-in…</p>',
     '  <label hidden>Setup token<input id="setup-token" type="password" autocomplete="off" /></label>',

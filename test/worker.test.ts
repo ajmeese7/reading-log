@@ -187,3 +187,40 @@ describe("read endpoint limits", () => {
     assert.equal(body.trim().split("\n").length, 5);
   });
 });
+
+
+describe("POST /reading/edit", () => {
+  test("updates title and URL while preserving identity, date, and other entries", async () => {
+    const ctx = createEnv();
+    await seed(ctx.env, 3);
+    const before = storedItems(ctx.store);
+    const response = await worker.fetch(new Request("https://reading.test/reading/edit", {
+      method: "POST", headers: authHeaders,
+      body: JSON.stringify({ original_url: before[1].url, url: "https://example.com/updated", title: "Updated" }),
+    }), ctx.env);
+    assert.equal(response.status, 200);
+    const after = storedItems(ctx.store);
+    assert.equal(after.length, 3);
+    assert.deepEqual(after[1], { ...before[1], title: "Updated", url: "https://example.com/updated" });
+    assert.deepEqual(after[0], before[0]);
+    assert.deepEqual(after[2], before[2]);
+  });
+
+  test("rejects unauthenticated edits, missing entries, unsafe URLs, and duplicate URLs without changing storage", async () => {
+    const ctx = createEnv();
+    await seed(ctx.env, 2);
+    const before = ctx.store.get("reading-items");
+    for (const [headers, body, expected] of [
+      [{ "Content-Type": "application/json" }, {}, 401],
+      [authHeaders, { original_url: "https://example.com/missing", url: "https://example.com/new", title: "T" }, 404],
+      [authHeaders, { original_url: "https://example.com/0", url: "javascript:alert(1)", title: "T" }, 400],
+      [authHeaders, { original_url: "https://example.com/0", url: "https://example.com/1", title: "T" }, 409],
+    ] as const) {
+      const response = await worker.fetch(new Request("https://reading.test/reading/edit", {
+        method: "POST", headers, body: JSON.stringify(body),
+      }), ctx.env);
+      assert.equal(response.status, expected);
+      assert.equal(ctx.store.get("reading-items"), before);
+    }
+  });
+});
